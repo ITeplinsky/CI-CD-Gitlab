@@ -1,0 +1,45 @@
+stages:
+  - build
+  - test
+  - push
+  - deploy
+
+variables:
+  IMAGE_AND_TAG: iteplinsky/statping:$CI_COMMIT_SHORT_SHA
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_DRIVER: overlay2
+
+
+default:
+  image: docker:24.0.6-alpine3.18
+  services:
+    - docker:24.0.6-dind-alpine3.18
+  tags:
+    - common-builds
+
+build:
+  stage: build
+  script: docker build -t $IMAGE_AND_TAG .
+
+test:
+  stage: test
+  script:
+    - echo "Start test job"
+    - wget -nv https://github.com/aquasecurity/trivy/releases/download/v0.45.0/trivy_0.45.0_Linux-64bit.tar.gz -O - | tar -zxvf -
+    - ./trivy image $IMAGE_AND_TAG
+
+push:
+  stage: push
+  script:
+    - echo "Start push job"
+    - docker login -u $DOCKER_REGISTRY_LOGIN -p $DOCKER_REGISTRY_PASSWORD
+    - docker push $IMAGE_AND_TAG
+    - docker logout
+
+deploy:
+  stage: deploy
+  script:
+    - echo "Start deploy job"
+    - chmod 600 $SSH_KEY_2
+    - SSH="ssh -o StrictHostKeyChecking=no -i $SSH_KEY_2 USERNAME@IP_ADDRESS"
+    - $SSH "docker run --name cicd_app -d -p 80:3000 $IMAGE_AND_TAG"
